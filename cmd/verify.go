@@ -116,10 +116,8 @@ var verifyCmd = &cobra.Command{
 		}()
 
 		// --- TUI Loading Sequence (LED Wave Dots) ---
-		// 1. Initial 2-second wanted delay
-		time.Sleep(2 * time.Second)
-
-		// 2. retrieving ...... (LED dot progression)
+		// Start immediately on execution to prevent blank screen freeze
+		// 1. retrieving ...... (LED dot progression)
 		fmt.Print("retrieving")
 		for i := 0; i < 6; i++ {
 			time.Sleep(500 * time.Millisecond)
@@ -128,7 +126,7 @@ var verifyCmd = &cobra.Command{
 		time.Sleep(300 * time.Millisecond)
 		fmt.Print("\r\033[K") // Clear line
 
-		// 3. processing ...... (LED dot progression)
+		// 2. processing ...... (LED dot progression)
 		fmt.Print("processing")
 		for i := 0; i < 6; i++ {
 			time.Sleep(500 * time.Millisecond)
@@ -137,7 +135,7 @@ var verifyCmd = &cobra.Command{
 		time.Sleep(300 * time.Millisecond)
 		fmt.Print("\r\033[K") // Clear line
 
-		// 4. organising ..... (LED dot progression)
+		// 3. organising ..... (LED dot progression)
 		fmt.Print("organising")
 		for i := 0; i < 5; i++ {
 			time.Sleep(500 * time.Millisecond)
@@ -152,29 +150,30 @@ var verifyCmd = &cobra.Command{
 			return fmt.Errorf("verification query failed: %w", outcome.err)
 		}
 
-		// --- Present Verification Report ---
-		fmt.Println("AWS Kill Switch - Verification")
-		fmt.Printf("Resources Expected To Be Deleted : %d\n", len(plan.Steps))
-		fmt.Println("────────────────────────────────────────────")
-		fmt.Println("successfully deleted ")
+		// --- Present Verification Report Line-by-Line ---
+		printLineSlow("AWS Kill Switch - Verification")
+		printLineSlow("")
+		printLineSlow(fmt.Sprintf("Resources Expected To Be Deleted : %d", len(plan.Steps)))
+		printLineSlow("────────────────────────────────────────────")
+		printLineSlow("successfully deleted ")
 		if len(outcome.successLines) > 0 {
 			for _, line := range outcome.successLines {
-				fmt.Println(line)
+				printLineSlow(line)
 			}
 		} else {
-			fmt.Println("  No successfully deleted resources found.")
+			printLineSlow("  No successfully deleted resources found.")
 		}
-		fmt.Println("────────────────────────────────────────────")
-		fmt.Println("failed deletion ")
+		printLineSlow("────────────────────────────────────────────")
+		printLineSlow("failed deletion ")
 		if len(outcome.failureLines) > 0 {
 			for _, line := range outcome.failureLines {
-				fmt.Println(line)
+				printLineSlow(line)
 			}
 		} else {
-			fmt.Println("  No failed resources remaining.")
+			printLineSlow("  No failed resources remaining.")
 		}
-		fmt.Println("────────────────────────────────────────────")
-		fmt.Println()
+		printLineSlow("────────────────────────────────────────────")
+		printLineSlow("")
 
 		// Calculate Verification Status
 		status := "SUCCESS"
@@ -204,19 +203,24 @@ var verifyCmd = &cobra.Command{
 			return fmt.Errorf("failed to save verification report: %w", err)
 		}
 
-		// Display Summary
-		fmt.Println("Execution Summary")
-		fmt.Println()
-		fmt.Printf("Resources Planned          : %d\n", len(plan.Steps))
-		fmt.Printf("Verified Deleted           : %d\n", outcome.verifiedDeletedCount)
-		fmt.Printf("Still Existing             : %d\n", outcome.stillExistingCount)
-		fmt.Printf("Verification Errors        : %d\n", outcome.verificationErrorsCount)
-		fmt.Printf("Verification Status        : %s\n", status)
-		fmt.Println()
-		fmt.Printf("Verification Report        : %s\n", verificationPath)
+		// Display Summary Line-by-Line
+		printLineSlow("Execution Summary")
+		printLineSlow("")
+		printLineSlow(fmt.Sprintf("Resources Planned          : %d", len(plan.Steps)))
+		printLineSlow(fmt.Sprintf("Verified Deleted           : %d", outcome.verifiedDeletedCount))
+		printLineSlow(fmt.Sprintf("Still Existing             : %d", outcome.stillExistingCount))
+		printLineSlow(fmt.Sprintf("Verification Errors        : %d", outcome.verificationErrorsCount))
+		printLineSlow(fmt.Sprintf("Verification Status        : %s", status))
+		printLineSlow("")
+		printLineSlow(fmt.Sprintf("Verification Report        : %s", verificationPath))
 
 		return nil
 	},
+}
+
+func printLineSlow(line string) {
+	fmt.Println(line)
+	time.Sleep(80 * time.Millisecond)
 }
 
 func cleanVerifyTypeName(t string) string {
