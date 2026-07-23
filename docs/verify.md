@@ -37,5 +37,8 @@ reports/verification.json (Audit Report)
     *   **Successfully Deleted** (green bold heading): Column-aligned listing of all verified deleted resources prefixed with a green tick (`✓`).
     *   **Failed Termination** (red bold heading): Listing of remaining active workloads prefixed with a red cross (`✗`) and suffixed with a red `(Still Exists)` or `(Verification Failed)` details.
 6.  **Generate Audit Report**: Writes a JSON report to `reports/verification.json` listing the verification status (`DELETED`, `EXISTS`, or `FAILED`) for each resource.
-7.  **Display Summary**: Prints the counts of planned, verified deleted, still existing, and error items.
+7.  **Display Summary**: Prints the counts of planned, verified deleted, still existing, and error items. The `Verification Status` is styled dynamically:
+    *   **ALL TERMINATION SUCCESS** (green): If all resources are verified as successfully deleted.
+    *   **PARTIAL SUCCESS** (blinking orange/yellow): If some resources were deleted but others still remain active.
+    *   **FAILED TERMINATION** (bold bright red): If all planned resources failed to delete.
 8.  **Exit Status**: The command always returns clean exit code `0` to signal verification checks executed successfully, even if some resources still remain active.
