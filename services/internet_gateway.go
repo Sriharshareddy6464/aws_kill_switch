@@ -24,6 +24,34 @@ func (s *InternetGatewayService) Scan(ctx context.Context, tagFilter string) ([]
 	}
 
 	for _, igw := range result.InternetGateways {
+		// Check if attached to a default VPC
+		isDefaultAttached := false
+		if len(igw.Attachments) > 0 {
+			var vpcIds []string
+			for _, att := range igw.Attachments {
+				if att.VpcId != nil {
+					vpcIds = append(vpcIds, *att.VpcId)
+				}
+			}
+			if len(vpcIds) > 0 {
+				vpcsOut, err := s.Client.DescribeVpcs(ctx, &ec2.DescribeVpcsInput{
+					VpcIds: vpcIds,
+				})
+				if err == nil {
+					for _, vpc := range vpcsOut.Vpcs {
+						if vpc.IsDefault != nil && *vpc.IsDefault {
+							isDefaultAttached = true
+							break
+						}
+					}
+				}
+			}
+		}
+
+		if isDefaultAttached {
+			continue
+		}
+
 		counts["Internet Gateways"]++
 		var deps []string
 		for _, att := range igw.Attachments {
