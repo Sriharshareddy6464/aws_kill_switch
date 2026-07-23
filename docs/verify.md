@@ -27,13 +27,14 @@ reports/verification.json (Audit Report)
 ```
 
 1.  **Read Plan**: Loads expected targets from `reports/plan.json`. If it doesn't exist, it prints instructions to scan/plan and exits.
-2.  **TUI Loading Animations**: Plays sequential waiting animations on start:
-    *   `retrieving ......` (left-to-right dot progression)
-    *   `processing ......` (blinking dot animation)
-    *   `organising .....` (static hold and fade)
-3.  **Live AWS Checks**: Checks each planned resource ID against corresponding AWS APIs (e.g. `DescribeInstances`, `DescribeLoadBalancers`, `HeadBucket`) to identify its actual state (`DELETED` or `EXISTS`).
+2.  **TUI Loading Animations**: On startup, a 2-second delay is introduced. It then plays sequential LED-wave dot progressions:
+    *   `retrieving ......` (dots fade in one by one at 500ms intervals)
+    *   `processing ......` (dots fade in one by one at 500ms intervals)
+    *   `organising .....` (dots fade in one by one at 500ms intervals)
+3.  **Background AWS Caching**: While the loading screen animations are running, live AWS checks are executed concurrently in a separate thread. This hides API latency so the report appears instantly as soon as `organising` finishes.
 4.  **Verified Representation Layout**: Outputs two separate lists:
     *   **successfully deleted**: Grouped and column-aligned listing of all verified deleted resources.
     *   **failed deletion**: Listing of remaining active workloads with `(Still Exists)` or `(Verification Failed)` details.
 5.  **Generate Audit Report**: Writes a JSON report to `reports/verification.json` listing the verification status (`DELETED`, `EXISTS`, or `FAILED`) for each resource.
 6.  **Display Summary**: Prints the counts of planned, verified deleted, still existing, and error items.
+7.  **Exit Status**: The command always returns clean exit code `0` to signal verification checks executed successfully, even if some resources still remain active.
