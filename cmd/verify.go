@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -14,6 +13,16 @@ import (
 	"github.com/Sriharshareddy6464/aws-kill/models"
 	"github.com/Sriharshareddy6464/aws-kill/utils"
 )
+
+type verificationOutcome struct {
+	successLines            []string
+	failureLines            []string
+	reportResources         []map[string]interface{}
+	verifiedDeletedCount    int
+	stillExistingCount      int
+	verificationErrorsCount int
+	err                     error
+}
 
 var verifyCmd = &cobra.Command{
 	Use:   "verify",
@@ -32,97 +41,124 @@ var verifyCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		fmt.Println("AWS Kill Switch - Verification")
-
-		// Animate Step 1: retrieving ...... (dots moving left to right)
-		for dotCount := 1; dotCount <= 6; dotCount++ {
-			fmt.Printf("\rretrieving %s", strings.Repeat(".", dotCount))
-			time.Sleep(120 * time.Millisecond)
-		}
-		fmt.Print("\r\033[K") // Clear line
-
-		// Animate Step 2: processing ...... (blinking dots)
-		for blink := 0; blink < 3; blink++ {
-			fmt.Print("\rprocessing ......")
-			time.Sleep(150 * time.Millisecond)
-			fmt.Print("\rprocessing       ")
-			time.Sleep(150 * time.Millisecond)
-		}
-		fmt.Print("\r\033[K") // Clear line
-
-		// Animate Step 3: organising ..... (static hold and fade)
-		fmt.Print("\rorganising .....")
-		time.Sleep(400 * time.Millisecond)
-		fmt.Print("\r\033[K") // Clear line
-
-		// Load expected plan
+		// Pre-load expected plan in main thread
 		var plan models.Plan
 		if err := utils.ReadJSON(planPath, &plan); err != nil {
 			return fmt.Errorf("failed to read plan: %w", err)
 		}
 
-		// Initialize AWS Session
-		prof := viper.GetString("profile")
-		reg := viper.GetString("region")
-		awsCfg, err := aws.NewSession(cmd.Context(), aws.Config{
-			Profile: prof,
-			Region:  reg,
-		})
-		if err != nil {
-			return fmt.Errorf("failed to initialize AWS config: %w", err)
-		}
+		// Initialize background AWS check channel
+		outcomeChan := make(chan verificationOutcome, 1)
 
-		verifier := engine.NewVerifier(awsCfg)
-
-		// Lists to categorize verified statuses
-		var successLines []string
-		var failureLines []string
-		var reportResources []map[string]interface{}
-
-		verifiedDeletedCount := 0
-		stillExistingCount := 0
-		verificationErrorsCount := 0
-
-		// Query AWS in the background
-		for _, res := range plan.Steps {
-			cleanType := cleanVerifyTypeName(res.Type)
-			name := res.Name
-			if name == "" {
-				name = res.ID
-			}
-
-			state, checkErr := verifier.VerifyResource(cmd.Context(), res)
-
-			var repStatus string
-			if state == "DELETED" {
-				// Align cleanType to 28 characters
-				successLines = append(successLines, fmt.Sprintf("✓ %-28s : %s", cleanType, name))
-				repStatus = "DELETED"
-				verifiedDeletedCount++
-			} else if state == "EXISTS" {
-				failureLines = append(failureLines, fmt.Sprintf("✗ %-28s : %s (Still Exists)", cleanType, name))
-				repStatus = "EXISTS"
-				stillExistingCount++
-			} else {
-				failureLines = append(failureLines, fmt.Sprintf("✗ %-28s : %s (Verification Failed: %v)", cleanType, name, checkErr))
-				repStatus = "FAILED"
-				verificationErrorsCount++
-			}
-
-			reportResources = append(reportResources, map[string]interface{}{
-				"service":      cleanType,
-				"id":           res.ID,
-				"name":         name,
-				"verification": repStatus,
+		// Start live AWS query thread in the background
+		go func() {
+			prof := viper.GetString("profile")
+			reg := viper.GetString("region")
+			awsCfg, err := aws.NewSession(cmd.Context(), aws.Config{
+				Profile: prof,
+				Region:  reg,
 			})
+			if err != nil {
+				outcomeChan <- verificationOutcome{err: err}
+				return
+			}
+
+			verifier := engine.NewVerifier(awsCfg)
+
+			var successLines []string
+			var failureLines []string
+			var reportResources []map[string]interface{}
+
+			verifiedDeletedCount := 0
+			stillExistingCount := 0
+			verificationErrorsCount := 0
+
+			for _, res := range plan.Steps {
+				cleanType := cleanVerifyTypeName(res.Type)
+				name := res.Name
+				if name == "" {
+					name = res.ID
+				}
+
+				state, checkErr := verifier.VerifyResource(cmd.Context(), res)
+
+				var repStatus string
+				if state == "DELETED" {
+					successLines = append(successLines, fmt.Sprintf("✓ %-28s : %s", cleanType, name))
+					repStatus = "DELETED"
+					verifiedDeletedCount++
+				} else if state == "EXISTS" {
+					failureLines = append(failureLines, fmt.Sprintf("✗ %-28s : %s (Still Exists)", cleanType, name))
+					repStatus = "EXISTS"
+					stillExistingCount++
+				} else {
+					failureLines = append(failureLines, fmt.Sprintf("✗ %-28s : %s (Verification Failed: %v)", cleanType, name, checkErr))
+					repStatus = "FAILED"
+					verificationErrorsCount++
+				}
+
+				reportResources = append(reportResources, map[string]interface{}{
+					"service":      cleanType,
+					"id":           res.ID,
+					"name":         name,
+					"verification": repStatus,
+				})
+			}
+
+			outcomeChan <- verificationOutcome{
+				successLines:            successLines,
+				failureLines:            failureLines,
+				reportResources:         reportResources,
+				verifiedDeletedCount:    verifiedDeletedCount,
+				stillExistingCount:      stillExistingCount,
+				verificationErrorsCount: verificationErrorsCount,
+			}
+		}()
+
+		// --- TUI Loading Sequence (LED Wave Dots) ---
+		// 1. Initial 2-second wanted delay
+		time.Sleep(2 * time.Second)
+
+		// 2. retrieving ...... (LED dot progression)
+		fmt.Print("retrieving")
+		for i := 0; i < 6; i++ {
+			time.Sleep(500 * time.Millisecond)
+			fmt.Print(".")
+		}
+		time.Sleep(300 * time.Millisecond)
+		fmt.Print("\r\033[K") // Clear line
+
+		// 3. processing ...... (LED dot progression)
+		fmt.Print("processing")
+		for i := 0; i < 6; i++ {
+			time.Sleep(500 * time.Millisecond)
+			fmt.Print(".")
+		}
+		time.Sleep(300 * time.Millisecond)
+		fmt.Print("\r\033[K") // Clear line
+
+		// 4. organising ..... (LED dot progression)
+		fmt.Print("organising")
+		for i := 0; i < 5; i++ {
+			time.Sleep(500 * time.Millisecond)
+			fmt.Print(".")
+		}
+		time.Sleep(400 * time.Millisecond)
+		fmt.Print("\r\033[K") // Clear line
+
+		// Fetch background result
+		outcome := <-outcomeChan
+		if outcome.err != nil {
+			return fmt.Errorf("verification query failed: %w", outcome.err)
 		}
 
-		// Display verified representation layout
+		// --- Present Verification Report ---
+		fmt.Println("AWS Kill Switch - Verification")
 		fmt.Printf("Resources Expected To Be Deleted : %d\n", len(plan.Steps))
 		fmt.Println("────────────────────────────────────────────")
 		fmt.Println("successfully deleted ")
-		if len(successLines) > 0 {
-			for _, line := range successLines {
+		if len(outcome.successLines) > 0 {
+			for _, line := range outcome.successLines {
 				fmt.Println(line)
 			}
 		} else {
@@ -130,8 +166,8 @@ var verifyCmd = &cobra.Command{
 		}
 		fmt.Println("────────────────────────────────────────────")
 		fmt.Println("failed deletion ")
-		if len(failureLines) > 0 {
-			for _, line := range failureLines {
+		if len(outcome.failureLines) > 0 {
+			for _, line := range outcome.failureLines {
 				fmt.Println(line)
 			}
 		} else {
@@ -142,8 +178,8 @@ var verifyCmd = &cobra.Command{
 
 		// Calculate Verification Status
 		status := "SUCCESS"
-		if stillExistingCount > 0 || verificationErrorsCount > 0 {
-			if verifiedDeletedCount > 0 {
+		if outcome.stillExistingCount > 0 || outcome.verificationErrorsCount > 0 {
+			if outcome.verifiedDeletedCount > 0 {
 				status = "PARTIAL SUCCESS"
 			} else {
 				status = "FAILED"
@@ -157,11 +193,11 @@ var verifyCmd = &cobra.Command{
 			"status":       status,
 			"summary": map[string]interface{}{
 				"planned":             len(plan.Steps),
-				"verified_deleted":    verifiedDeletedCount,
-				"still_existing":      stillExistingCount,
-				"verification_errors": verificationErrorsCount,
+				"verified_deleted":    outcome.verifiedDeletedCount,
+				"still_existing":      outcome.stillExistingCount,
+				"verification_errors": outcome.verificationErrorsCount,
 			},
-			"resources": reportResources,
+			"resources": outcome.reportResources,
 		}
 
 		if err := utils.WriteJSON(verificationPath, reportData); err != nil {
@@ -172,16 +208,12 @@ var verifyCmd = &cobra.Command{
 		fmt.Println("Execution Summary")
 		fmt.Println()
 		fmt.Printf("Resources Planned          : %d\n", len(plan.Steps))
-		fmt.Printf("Verified Deleted           : %d\n", verifiedDeletedCount)
-		fmt.Printf("Still Existing             : %d\n", stillExistingCount)
-		fmt.Printf("Verification Errors        : %d\n", verificationErrorsCount)
+		fmt.Printf("Verified Deleted           : %d\n", outcome.verifiedDeletedCount)
+		fmt.Printf("Still Existing             : %d\n", outcome.stillExistingCount)
+		fmt.Printf("Verification Errors        : %d\n", outcome.verificationErrorsCount)
 		fmt.Printf("Verification Status        : %s\n", status)
 		fmt.Println()
 		fmt.Printf("Verification Report        : %s\n", verificationPath)
-
-		if status == "FAILED" || stillExistingCount > 0 {
-			os.Exit(1)
-		}
 
 		return nil
 	},
