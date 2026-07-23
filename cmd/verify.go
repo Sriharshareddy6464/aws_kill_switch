@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -32,34 +33,33 @@ var verifyCmd = &cobra.Command{
 		}
 
 		fmt.Println("AWS Kill Switch - Verification")
-		fmt.Print("Loading verification plan... [                    ] 0%")
+
+		// Animate Step 1: retrieving ...... (dots moving left to right)
+		for dotCount := 1; dotCount <= 6; dotCount++ {
+			fmt.Printf("\rretrieving %s", strings.Repeat(".", dotCount))
+			time.Sleep(120 * time.Millisecond)
+		}
+		fmt.Print("\r\033[K") // Clear line
+
+		// Animate Step 2: processing ...... (blinking dots)
+		for blink := 0; blink < 3; blink++ {
+			fmt.Print("\rprocessing ......")
+			time.Sleep(150 * time.Millisecond)
+			fmt.Print("\rprocessing       ")
+			time.Sleep(150 * time.Millisecond)
+		}
+		fmt.Print("\r\033[K") // Clear line
+
+		// Animate Step 3: organising ..... (static hold and fade)
+		fmt.Print("\rorganising .....")
+		time.Sleep(400 * time.Millisecond)
+		fmt.Print("\r\033[K") // Clear line
 
 		// Load expected plan
 		var plan models.Plan
 		if err := utils.ReadJSON(planPath, &plan); err != nil {
-			fmt.Println()
 			return fmt.Errorf("failed to read plan: %w", err)
 		}
-
-		// Animate verification plan loading bar
-		dots := 20
-		for i := 0; i <= 100; i += 10 {
-			filled := (i * dots) / 100
-			bar := ""
-			for j := 0; j < dots; j++ {
-				if j < filled {
-					bar += "█"
-				} else {
-					bar += " "
-				}
-			}
-			fmt.Printf("\rLoading verification plan... [%s] %d%%", bar, i)
-			time.Sleep(20 * time.Millisecond)
-		}
-		fmt.Println()
-		fmt.Println("✓ Plan loaded successfully.")
-		fmt.Printf("Resources Expected To Be Deleted : %d\n", len(plan.Steps))
-		fmt.Println("────────────────────────────────────────────")
 
 		// Initialize AWS Session
 		prof := viper.GetString("profile")
@@ -74,45 +74,40 @@ var verifyCmd = &cobra.Command{
 
 		verifier := engine.NewVerifier(awsCfg)
 
+		// Lists to categorize verified statuses
+		var successLines []string
+		var failureLines []string
 		var reportResources []map[string]interface{}
+
 		verifiedDeletedCount := 0
 		stillExistingCount := 0
 		verificationErrorsCount := 0
 
-		// Verify resource-by-resource live
-		for i, res := range plan.Steps {
+		// Query AWS in the background
+		for _, res := range plan.Steps {
 			cleanType := cleanVerifyTypeName(res.Type)
 			name := res.Name
 			if name == "" {
 				name = res.ID
 			}
 
-			fmt.Printf("[%d/%d]\n%s : %s\nStatus : Verifying...\n", i+1, len(plan.Steps), cleanType, name)
-
 			state, checkErr := verifier.VerifyResource(cmd.Context(), res)
 
-			// Clear "Status : Verifying..." line and check status
-			fmt.Print("\033[1A\033[K") // Clear Verifying line
-
-			var displayStatus string
 			var repStatus string
-
 			if state == "DELETED" {
-				displayStatus = "\033[32m✓ Verified Deleted\033[0m"
+				// Align cleanType to 28 characters
+				successLines = append(successLines, fmt.Sprintf("✓ %-28s : %s", cleanType, name))
 				repStatus = "DELETED"
 				verifiedDeletedCount++
 			} else if state == "EXISTS" {
-				displayStatus = "\033[31m✗ Resource Still Exists\033[0m"
+				failureLines = append(failureLines, fmt.Sprintf("✗ %-28s : %s (Still Exists)", cleanType, name))
 				repStatus = "EXISTS"
 				stillExistingCount++
 			} else {
-				displayStatus = fmt.Sprintf("\033[31m✗ Verification Failed: %v\033[0m", checkErr)
+				failureLines = append(failureLines, fmt.Sprintf("✗ %-28s : %s (Verification Failed: %v)", cleanType, name, checkErr))
 				repStatus = "FAILED"
 				verificationErrorsCount++
 			}
-
-			fmt.Println(displayStatus)
-			fmt.Println("────────────────────────────────────────────")
 
 			reportResources = append(reportResources, map[string]interface{}{
 				"service":      cleanType,
@@ -122,11 +117,34 @@ var verifyCmd = &cobra.Command{
 			})
 		}
 
+		// Display verified representation layout
+		fmt.Printf("Resources Expected To Be Deleted : %d\n", len(plan.Steps))
+		fmt.Println("────────────────────────────────────────────")
+		fmt.Println("successfully deleted ")
+		if len(successLines) > 0 {
+			for _, line := range successLines {
+				fmt.Println(line)
+			}
+		} else {
+			fmt.Println("  No successfully deleted resources found.")
+		}
+		fmt.Println("────────────────────────────────────────────")
+		fmt.Println("failed deletion ")
+		if len(failureLines) > 0 {
+			for _, line := range failureLines {
+				fmt.Println(line)
+			}
+		} else {
+			fmt.Println("  No failed resources remaining.")
+		}
+		fmt.Println("────────────────────────────────────────────")
+		fmt.Println()
+
 		// Calculate Verification Status
 		status := "SUCCESS"
 		if stillExistingCount > 0 || verificationErrorsCount > 0 {
 			if verifiedDeletedCount > 0 {
-				status = "PARTIAL_SUCCESS"
+				status = "PARTIAL SUCCESS"
 			} else {
 				status = "FAILED"
 			}
@@ -150,14 +168,15 @@ var verifyCmd = &cobra.Command{
 			return fmt.Errorf("failed to save verification report: %w", err)
 		}
 
-		// Display Final Summary
+		// Display Summary
 		fmt.Println("Execution Summary")
-		fmt.Println("────────────────────────────────────────────")
+		fmt.Println()
 		fmt.Printf("Resources Planned          : %d\n", len(plan.Steps))
 		fmt.Printf("Verified Deleted           : %d\n", verifiedDeletedCount)
 		fmt.Printf("Still Existing             : %d\n", stillExistingCount)
 		fmt.Printf("Verification Errors        : %d\n", verificationErrorsCount)
 		fmt.Printf("Verification Status        : %s\n", status)
+		fmt.Println()
 		fmt.Printf("Verification Report        : %s\n", verificationPath)
 
 		if status == "FAILED" || stillExistingCount > 0 {
@@ -189,11 +208,17 @@ func cleanVerifyTypeName(t string) string {
 	case "Target Groups":
 		return "Target Group"
 	case "Volume":
-		return "Volume"
+		return "EBS Volume"
 	case "Snapshot":
 		return "Snapshot"
 	case "KeyPair":
-		return "KeyPair"
+		return "Key Pair"
+	case "CloudFront":
+		return "CloudFront Distribution"
+	case "S3":
+		return "S3 Bucket"
+	case "RDS":
+		return "RDS Instance"
 	default:
 		return t
 	}
