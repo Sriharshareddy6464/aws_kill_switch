@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -185,9 +186,56 @@ func (s *EC2Service) Scan(ctx context.Context, tagFilter string) ([]models.Resou
 	return resources, counts, nil
 }
 
-func (s *EC2Service) Delete(ctx context.Context, id string) error {
-	_, err := s.Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
-		InstanceIds: []string{id},
-	})
-	return err
+func (s *EC2Service) Delete(ctx context.Context, id string, resourceType string) error {
+	switch resourceType {
+	case "EC2 Instances":
+		_, err := s.Client.TerminateInstances(ctx, &ec2.TerminateInstancesInput{
+			InstanceIds: []string{id},
+		})
+		return err
+	case "Volume":
+		_, err := s.Client.DeleteVolume(ctx, &ec2.DeleteVolumeInput{
+			VolumeId: &id,
+		})
+		return err
+	case "Snapshot":
+		_, err := s.Client.DeleteSnapshot(ctx, &ec2.DeleteSnapshotInput{
+			SnapshotId: &id,
+		})
+		return err
+	case "KeyPair":
+		_, err := s.Client.DeleteKeyPair(ctx, &ec2.DeleteKeyPairInput{
+			KeyPairId: &id,
+		})
+		return err
+	case "LaunchTemplate":
+		_, err := s.Client.DeleteLaunchTemplate(ctx, &ec2.DeleteLaunchTemplateInput{
+			LaunchTemplateId: &id,
+		})
+		return err
+	case "PlacementGroup":
+		// Placement group uses GroupName
+		_, err := s.Client.DeletePlacementGroup(ctx, &ec2.DeletePlacementGroupInput{
+			GroupName: &id,
+		})
+		return err
+	case "DedicatedHost":
+		_, err := s.Client.ReleaseHosts(ctx, &ec2.ReleaseHostsInput{
+			HostIds: []string{id},
+		})
+		return err
+	case "CapacityReservation":
+		_, err := s.Client.CancelCapacityReservation(ctx, &ec2.CancelCapacityReservationInput{
+			CapacityReservationId: &id,
+		})
+		return err
+	case "NetworkInterface":
+		_, err := s.Client.DeleteNetworkInterface(ctx, &ec2.DeleteNetworkInterfaceInput{
+			NetworkInterfaceId: &id,
+		})
+		return err
+	default:
+		return fmt.Errorf("unsupported EC2 resource type: %s", resourceType)
+	}
 }
+
