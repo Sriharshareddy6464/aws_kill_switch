@@ -186,12 +186,17 @@ var verifyCmd = &cobra.Command{
 
 			fmt.Println("Resources Not Included In Current Plan")
 			fmt.Println("────────────────────────────────────────────")
-			for _, k := range unselectedGroupKeys {
-				fmt.Println(k)
-				for _, item := range unselectedGroups[k] {
-					fmt.Printf(" • %s\n", item)
-				}
+			if len(unselectedMap) == 0 {
+				fmt.Println("No active resources remain outside the current deletion plan.")
 				fmt.Println()
+			} else {
+				for _, k := range unselectedGroupKeys {
+					fmt.Println(k)
+					for _, item := range unselectedGroups[k] {
+						fmt.Printf(" • %s\n", item)
+					}
+					fmt.Println()
+				}
 			}
 
 			fmt.Println("Summary")
