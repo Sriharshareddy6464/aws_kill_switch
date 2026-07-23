@@ -97,11 +97,16 @@ var verifyCmd = &cobra.Command{
 					verificationErrorsCount++
 				}
 
+				var errStr string
+				if checkErr != nil {
+					errStr = checkErr.Error()
+				}
 				reportResources = append(reportResources, map[string]interface{}{
 					"service":      cleanType,
 					"id":           res.ID,
 					"name":         name,
 					"verification": repStatus,
+					"reason":       errStr,
 				})
 			}
 
