@@ -24,7 +24,7 @@ If a plan file (`reports/plan.json`) exists, but the destruction result file (`r
 2.  **You have missed (Planned List)**:
     Lists all services and names that were planned for deletion but not yet executed.
 3.  **You still remaining with (Unselected List)**:
-    *   **Scanned & Unselected Workloads**: User-created resources found in the scan phase that were not checked/selected during the interactive TUI planning stage.
+    *   **Scanned & Unselected Workloads**: User-created resources found in the scan phase that were not checked/selected during the interactive TUI planning stage. If no unselected resources remain, it prints: `No active resources remain outside the current deletion plan.`
     *   **Default AWS Resources (Protected)**: Discovers and prints default VPCs, default subnets, and default security groups present in the account, clearly marking them as `Default / Protected` so that the developer is aware they are kept safe.
 
 ---
