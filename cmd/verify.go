@@ -84,15 +84,15 @@ var verifyCmd = &cobra.Command{
 
 				var repStatus string
 				if state == "DELETED" {
-					successLines = append(successLines, fmt.Sprintf("✓ %-28s : %s", cleanType, name))
+					successLines = append(successLines, fmt.Sprintf("\033[32m✓\033[0m %-28s : %s", cleanType, name))
 					repStatus = "DELETED"
 					verifiedDeletedCount++
 				} else if state == "EXISTS" {
-					failureLines = append(failureLines, fmt.Sprintf("✗ %-28s : %s (Still Exists)", cleanType, name))
+					failureLines = append(failureLines, fmt.Sprintf("\033[31m✗\033[0m %-28s : %s (\033[31mStill Exists\033[0m)", cleanType, name))
 					repStatus = "EXISTS"
 					stillExistingCount++
 				} else {
-					failureLines = append(failureLines, fmt.Sprintf("✗ %-28s : %s (Verification Failed: %v)", cleanType, name, checkErr))
+					failureLines = append(failureLines, fmt.Sprintf("\033[31m✗\033[0m %-28s : %s (\033[31mVerification Failed: %v\033[0m)", cleanType, name, checkErr))
 					repStatus = "FAILED"
 					verificationErrorsCount++
 				}
@@ -116,8 +116,6 @@ var verifyCmd = &cobra.Command{
 		}()
 
 		// --- TUI Loading Sequence (LED Wave Dots) ---
-		// Start immediately on execution to prevent blank screen freeze
-		// 1. retrieving ...... (LED dot progression)
 		fmt.Print("retrieving")
 		for i := 0; i < 6; i++ {
 			time.Sleep(500 * time.Millisecond)
@@ -126,7 +124,6 @@ var verifyCmd = &cobra.Command{
 		time.Sleep(300 * time.Millisecond)
 		fmt.Print("\r\033[K") // Clear line
 
-		// 2. processing ...... (LED dot progression)
 		fmt.Print("processing")
 		for i := 0; i < 6; i++ {
 			time.Sleep(500 * time.Millisecond)
@@ -135,7 +132,6 @@ var verifyCmd = &cobra.Command{
 		time.Sleep(300 * time.Millisecond)
 		fmt.Print("\r\033[K") // Clear line
 
-		// 3. organising ..... (LED dot progression)
 		fmt.Print("organising")
 		for i := 0; i < 5; i++ {
 			time.Sleep(500 * time.Millisecond)
@@ -155,7 +151,7 @@ var verifyCmd = &cobra.Command{
 		printLineSlow("")
 		printLineSlow(fmt.Sprintf("Resources Expected To Be Deleted : %d", len(plan.Steps)))
 		printLineSlow("────────────────────────────────────────────")
-		printLineSlow("successfully deleted ")
+		printLineSlow("\033[1;32mSuccessfully Deleted\033[0m")
 		if len(outcome.successLines) > 0 {
 			for _, line := range outcome.successLines {
 				printLineSlow(line)
@@ -164,7 +160,7 @@ var verifyCmd = &cobra.Command{
 			printLineSlow("  No successfully deleted resources found.")
 		}
 		printLineSlow("────────────────────────────────────────────")
-		printLineSlow("failed deletion ")
+		printLineSlow("\033[1;31mFailed Termination\033[0m")
 		if len(outcome.failureLines) > 0 {
 			for _, line := range outcome.failureLines {
 				printLineSlow(line)
