@@ -171,14 +171,19 @@ var verifyCmd = &cobra.Command{
 		printLineSlow("────────────────────────────────────────────")
 		printLineSlow("")
 
-		// Calculate Verification Status
-		status := "SUCCESS"
-		if outcome.stillExistingCount > 0 || outcome.verificationErrorsCount > 0 {
-			if outcome.verifiedDeletedCount > 0 {
-				status = "PARTIAL SUCCESS"
-			} else {
-				status = "FAILED"
-			}
+		// Calculate Verification Status and format output text
+		var status string
+		var statusText string
+
+		if outcome.stillExistingCount == 0 && outcome.verificationErrorsCount == 0 {
+			status = "SUCCESS"
+			statusText = "\033[1;32mALL TERMINATION SUCCESS\033[0m"
+		} else if outcome.verifiedDeletedCount > 0 {
+			status = "PARTIAL_SUCCESS"
+			statusText = "\033[5;33mPARTIAL SUCCESS\033[0m"
+		} else {
+			status = "FAILED"
+			statusText = "\033[1;91mFAILED TERMINATION\033[0m"
 		}
 
 		// Save verification.json report
@@ -206,7 +211,7 @@ var verifyCmd = &cobra.Command{
 		printLineSlow(fmt.Sprintf("Verified Deleted           : %d", outcome.verifiedDeletedCount))
 		printLineSlow(fmt.Sprintf("Still Existing             : %d", outcome.stillExistingCount))
 		printLineSlow(fmt.Sprintf("Verification Errors        : %d", outcome.verificationErrorsCount))
-		printLineSlow(fmt.Sprintf("Verification Status        : %s", status))
+		printLineSlow(fmt.Sprintf("Verification Status        : %s", statusText))
 		printLineSlow("")
 		printLineSlow(fmt.Sprintf("Verification Report        : %s", verificationPath))
 
