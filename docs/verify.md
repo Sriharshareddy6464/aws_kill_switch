@@ -1,6 +1,6 @@
 # Verification Phase Guide (`aws-kill verify`)
 
-The `verify` command is the final audit check of the AWS Kill Switch pipeline. It ensures that the resources targeted in the plan were successfully deleted from your AWS account, alerts you if a planned destruction was missed, and lists unselected/default resources.
+The `verify` command is the final audit check of the AWS Kill Switch pipeline. It queries live AWS APIs in real time to verify that the target resource IDs listed in `reports/plan.json` are completely removed.
 
 ---
 
@@ -12,29 +12,24 @@ go run . verify
 
 ---
 
-## Execution Logic & Scenarios
+## Execution Logic (Architecture Design)
 
-The command executes differently depending on the state of the local plan and result files:
+Unlike other steps, verification does not trust local receipt files (such as `reports/result.json`). It compares expected future state (from `plan.json`) against actual cloud reality (from live AWS APIs):
 
-### Scenario A: Kill Action Was Missed
-If a plan file (`reports/plan.json`) exists, but the destruction result file (`reports/result.json`) does not exist, the command alerts the user and prints detailed lists:
+```text
+plan.json (Expected State)
+     │
+     ▼
+[verify command] ───(Live API Queries)───> AWS Infrastructure (Actual State)
+     │
+     ▼
+reports/verification.json (Audit Report)
+```
 
-1.  **Missed Deletion Alert**:
-    `Error: Generated deletion plan isn't executed. Kindly run "go run . kill"`
-2.  **You have missed (Planned List)**:
-    Lists all services and names that were planned for deletion but not yet executed.
-3.  **You still remaining with (Unselected List)**:
-    *   **Scanned & Unselected Workloads**: User-created resources found in the scan phase that were not checked/selected during the interactive TUI planning stage. If no unselected resources remain, it prints: `No active resources remain outside the current deletion plan.`
-    *   **Default AWS Resources (Protected)**: Discovers and prints default VPCs, default subnets, and default security groups present in the account, clearly marking them as `Default / Protected` so that the developer is aware they are kept safe.
-
----
-
-### Scenario B: Normal Verification Path (Kill Action Executed)
-If `reports/result.json` exists, the command runs a post-cleanup audit check:
-
-1.  **Audit Queries**:
-    *   Loops through all resources recorded as successfully deleted in `reports/result.json`.
-    *   Directly queries AWS APIs (e.g. `DescribeInstances`, `ListBuckets`) to confirm that these resource IDs are no longer present (expecting `404 Not Found` or empty results).
-2.  **Generate Audit Report**:
-    *   Writes a final report to `reports/verification.json`.
-    *   The report contains `verified: true` if all targeted resources are successfully verified as deleted. If any resources managed to survive, they are listed under `remaining_resources` for manual inspection.
+1.  **Read Plan**: Loads expected targets from `reports/plan.json`. If it doesn't exist, it prints instructions to scan/plan and exits.
+2.  **Live AWS Checks**: For each resource, the verifier invokes corresponding query calls (e.g. `DescribeInstances`, `DescribeLoadBalancers`, `HeadBucket`) and resolves the state:
+    *   `✓ Verified Deleted`: The resource no longer exists in AWS (returns `NotFound` or `404` error code).
+    *   `✗ Resource Still Exists`: The resource is still active in the account.
+    *   `✗ Verification Failed`: The query encountered permission or connection errors.
+3.  **Generate Audit Report**: Writes a JSON report to `reports/verification.json` listing the verification status (`DELETED`, `EXISTS`, or `FAILED`) for each resource.
+4.  **Display Summary**: Prints the counts of planned, verified deleted, still existing, and error items.
