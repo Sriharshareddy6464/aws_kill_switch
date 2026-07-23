@@ -16,10 +16,17 @@ import (
 	"github.com/Sriharshareddy6464/aws-kill/utils"
 )
 
+type ProgressReporter interface {
+	OnStart(index int, total int, res models.Resource)
+	OnSuccess(index int, total int, res models.Resource)
+	OnFailure(index int, total int, res models.Resource, err error)
+}
+
 type Killer struct {
 	Registry *clientRegistry.ClientRegistry
 	Config   aws.Config
 	DryRun   bool
+	Reporter ProgressReporter
 }
 
 func NewKiller(cfg aws.Config, dryRun bool) *Killer {
@@ -59,10 +66,20 @@ func (k *Killer) Kill(ctx context.Context, plan *models.Plan) (*models.Result, e
 	cfSvc := services.NewCloudFrontService(k.Registry.CloudFront)
 
 	for i, step := range plan.Steps {
-		utils.Logger.Info("Processing step", slog.Int("index", i+1), slog.String("type", step.Type), slog.String("id", step.ID))
+		if k.Reporter != nil {
+			k.Reporter.OnStart(i+1, len(plan.Steps), step)
+		} else {
+			utils.Logger.Info("Processing step", slog.Int("index", i+1), slog.String("type", step.Type), slog.String("id", step.ID))
+		}
 
 		if k.DryRun {
-			utils.Logger.Info(fmt.Sprintf("[DRY-RUN] Successfully deleted %s (%s)", step.ID, step.Type))
+			// Simulate a short sleep to show animation progress in dry-run
+			time.Sleep(300 * time.Millisecond)
+			if k.Reporter != nil {
+				k.Reporter.OnSuccess(i+1, len(plan.Steps), step)
+			} else {
+				utils.Logger.Info(fmt.Sprintf("[DRY-RUN] Successfully deleted %s (%s)", step.ID, step.Type))
+			}
 			result.DeletedResources = append(result.DeletedResources, step)
 			continue
 		}
@@ -104,7 +121,11 @@ func (k *Killer) Kill(ctx context.Context, plan *models.Plan) (*models.Result, e
 		}
 
 		if err != nil {
-			utils.Logger.Error("Failed to delete resource", slog.String("id", step.ID), slog.Any("error", err))
+			if k.Reporter != nil {
+				k.Reporter.OnFailure(i+1, len(plan.Steps), step, err)
+			} else {
+				utils.Logger.Error("Failed to delete resource", slog.String("id", step.ID), slog.Any("error", err))
+			}
 			step.State = "failed: " + err.Error()
 			result.FailedResources = append(result.FailedResources, step)
 			continue
@@ -113,7 +134,11 @@ func (k *Killer) Kill(ctx context.Context, plan *models.Plan) (*models.Result, e
 		// Wait/Poll for asynchronous resource termination
 		k.waitForDeletion(ctx, step)
 
-		utils.Logger.Info("Successfully deleted resource", slog.String("id", step.ID))
+		if k.Reporter != nil {
+			k.Reporter.OnSuccess(i+1, len(plan.Steps), step)
+		} else {
+			utils.Logger.Info("Successfully deleted resource", slog.String("id", step.ID))
+		}
 		step.State = "deleted"
 		result.DeletedResources = append(result.DeletedResources, step)
 	}
