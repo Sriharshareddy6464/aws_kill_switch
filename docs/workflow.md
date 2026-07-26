@@ -21,7 +21,7 @@ Unless the preceding step has successfully completed and generated the required 
 | **2. List** | `aws-kill list` | `reports/status.json` | *None* | Reads the summary status and prints active AWS resource groups and counts. |
 | **3. Plan** | `aws-kill plan` | `reports/inventory.json` | `reports/plan.json` | Analyzes dependencies and maps out the optimal deletion sequence. |
 | **4. Kill** | `aws-kill kill` | `reports/plan.json` | `reports/result.json` | Destroys resources in order, wait, retry, and tracks execution state. |
-| **5. Verify** | `aws-kill verify` | `reports/result.json` | `reports/verification.json` | Post-deletion check confirming no planned resources remain in AWS. |
+| **5. Verify** | `aws-kill verify` | `reports/plan.json` | `reports/verification.json` | Post-deletion check confirming no planned resources remain in AWS. |
 
 ---
 
@@ -55,8 +55,15 @@ Each command contains validation guards to prevent executing tasks out of order:
 *   **Outputs**: Saves termination execution status list to `reports/result.json`.
 
 ### `aws-kill verify`
-*   **Action**: Queries AWS for all resources listed in the results check to verify 404 deletion status.
-*   **Guard Check**: Verifies that `reports/result.json` exists.
+*   **Action**: Queries AWS in real time for all resources listed in the planned target list to confirm deletion status.
+*   **Guard Check**: Verifies that `reports/plan.json` exists.
 *   **Failure Behavior**: Aborts with code `1` and outputs:
-    `Error: No kill execution state found at reports/result.json. Please run 'aws-kill kill' first.`
+    `Error: No execution plan found at reports/plan.json. Please run 'aws-kill plan' first.`
 *   **Outputs**: Writes final status confirmation list to `reports/verification.json`.
+
+### `aws-kill explain`
+*   **Action**: Parses verification results to diagnose residual active resources and generate troubleshooting steps.
+*   **Guard Check**: Verifies that `reports/verification.json` exists.
+*   **Failure Behavior**: Aborts with code `1` and outputs:
+    `Error: No verification report found. Please run 'aws-kill verify' first.`
+
