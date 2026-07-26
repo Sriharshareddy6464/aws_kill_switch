@@ -20,6 +20,7 @@ type ProgressReporter interface {
 	OnStart(index int, total int, res models.Resource)
 	OnSuccess(index int, total int, res models.Resource)
 	OnFailure(index int, total int, res models.Resource, err error)
+	OnPending(index int, total int, res models.Resource, err error)
 }
 
 type Killer struct {
@@ -121,6 +122,15 @@ func (k *Killer) Kill(ctx context.Context, plan *models.Plan) (*models.Result, e
 		}
 
 		if err != nil {
+			if pendingErr, ok := err.(*services.CloudFrontPendingError); ok {
+				if k.Reporter != nil {
+					k.Reporter.OnPending(i+1, len(plan.Steps), step, pendingErr)
+				}
+				step.State = "pending: " + pendingErr.Error()
+				result.PendingResources = append(result.PendingResources, step)
+				continue
+			}
+
 			if k.Reporter != nil {
 				k.Reporter.OnFailure(i+1, len(plan.Steps), step, err)
 			} else {
