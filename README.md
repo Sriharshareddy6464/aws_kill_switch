@@ -1,11 +1,11 @@
 # AWS Kill Switch (`aws-kill`)
 
-A lightweight, developer-focused command-line utility designed to automate the discovery, planning, sequencing, and destruction of temporary AWS development infrastructure. 
+A lightweight, dependency-aware command-line utility in Go designed to automate the discovery, planning, sequencing, and destruction of temporary AWS development infrastructure. 
 
 It eliminates the tedious task of manually cleaning up interconnected cloud resources (VPCs, Subnets, EC2 Instances, ALBs, RDS databases, S3 buckets, CloudFront distributions, etc.) when sandbox environments or dev tests are no longer needed.
 
 > [!IMPORTANT]
-> **Intent and Safety Scoping**:
+> **Safety and Scope Boundaries**:
 > This tool is strictly a developer utility meant for **sandbox account cleanups**. To prevent accidental destruction or disruption:
 > 1. It **excludes all AWS default infrastructure** (default VPCs, default subnets, default security groups) at the scan level.
 > 2. It **requires explicit interactive confirmation** and grouping selection at the planning stage.
@@ -84,7 +84,11 @@ To prevent state inconsistencies, `aws-kill` enforces a strict sequence of comma
 
 ### 1. Prerequisites
 *   **Go**: Install **Go 1.24+** on your local machine.
-*   **AWS CLI**: Ensure your local environment is authenticated to your target AWS sandbox account (e.g. via `aws configure` or environment credentials).
+*   **AWS CLI**: The utility executes API requests authenticated via your local AWS CLI credentials. Install the official AWS CLI and configure access keys before proceeding:
+    ```bash
+    aws configure
+    ```
+    Enter your Access Key ID, Secret Access Key, target region, and output format.
 
 ### 2. Compile & Install
 To build the application and package it as a native executable:
@@ -106,6 +110,13 @@ go build -o aws-kill
 ## How To Use (Step-by-Step Walkthrough)
 
 Follow these steps sequentially to scan, plan, destroy, verify, and troubleshoot your AWS infrastructure:
+
+### Step 0: Configure AWS Authentication
+Ensure your environment is configured to point to your target sandbox account. You can configure credentials using:
+```bash
+aws configure
+```
+To run the tool using a specific profile, use the `--profile` flag.
 
 ### Step 1: Scan Active Resources
 Scan your AWS account to discover all active, non-default workloads. You can specify AWS CLI profile, region, or tags:
