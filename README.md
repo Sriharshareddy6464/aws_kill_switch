@@ -2,7 +2,7 @@
 
 A lightweight, developer-focused command-line utility designed to automate the discovery, planning, sequencing, and destruction of temporary AWS development infrastructure. 
 
-It eliminates the tedious task of manually cleaning up interconnected cloud resources (VPCs, Subnets, EC2 Instances, ALBs, RDS databases, etc.) when sandbox environments or free tiers are no longer needed.
+It eliminates the tedious task of manually cleaning up interconnected cloud resources (VPCs, Subnets, EC2 Instances, ALBs, RDS databases, S3 buckets, CloudFront distributions, etc.) when sandbox environments or dev tests are no longer needed.
 
 > [!IMPORTANT]
 > **Intent and Safety Scoping**:
@@ -20,13 +20,13 @@ The application is structured into four decoupled layers to separate CLI interac
 ```
                   ┌────────────────────────────────────────┐
                   │          Cobra CLI Cmd Layer           │
-                  │   (scan, list, plan, kill, verify)     │
+                  │ (scan, list, plan, kill, verify, explain)
                   └───────────────────┬────────────────────┘
                                       │
                                       ▼
                   ┌────────────────────────────────────────┐
                   │      Workflow Engines (orchestrate)     │
-                  │     (Scanner, Planner, Killer, etc.)   │
+                  │   (Scanner, Planner, Killer, Verifier) │
                   └───────────────────┬────────────────────┘
                                       │
                                       ▼
@@ -38,11 +38,11 @@ The application is structured into four decoupled layers to separate CLI interac
                                       ▼
                   ┌────────────────────────────────────────┐
                   │          AWS Service Modules           │
-                  │        (ec2.go, rds.go, s3.go...)      │
+                  │      (ec2.go, rds.go, cloudfront.go...)│
                   └────────────────────────────────────────┘
 ```
 
-*   **CLI Cmd Layer (`cmd/`)**: Handles arguments, flags, interactive terminal UI prompts, and local state file validations.
+*   **CLI Cmd Layer (`cmd/`)**: Handles arguments, flags, interactive terminal UI prompts, typewriter reports, and local state file validations.
 *   **Workflow Engines (`engine/`)**: Implements topological sorting, graph cycle breaking, sequential execution loops, and active waiters.
 *   **AWS Service Modules (`services/`)**: Individual service wrapper files managing SDK inputs/outputs.
 
@@ -59,14 +59,24 @@ To prevent state inconsistencies, `aws-kill` enforces a strict sequence of comma
 [reports/inventory.json] ────> [plan] (interactive selection & confirm)
                                   │
                                   ▼
-                          [reports/plan.json] ────> [kill] ────> [reports/result.json] ────> [verify]
+                          [reports/plan.json] ────> [kill] ────> [reports/result.json]
+                                                      │
+                                                      ▼
+                                                   [verify]
+                                                      │
+                                                      ▼
+                                              [reports/verification.json]
+                                                      │
+                                                      ▼
+                                                   [explain]
 ```
 
 *   **`scan`**: Performs live API reads to discover resources and writes the local inventory status.
 *   **`list`**: Offline read of the scan status summary.
 *   **`plan`**: Groups resources by VPC network, shows an interactive TUI picker, and records the validated deletion sequence.
-*   **`kill`**: Sequentially terminates the selected resource plan.
+*   **`kill`**: Sequentially terminates the selected resource plan and polls active states. Handles CloudFront auto-disabling lifecycle transitions.
 *   **`verify`**: Confirms that target resource IDs are no longer present in AWS.
+*   **`explain`**: Translates verify failures/existing resources into developer troubleshooting fixes.
 
 ---
 
@@ -74,62 +84,72 @@ To prevent state inconsistencies, `aws-kill` enforces a strict sequence of comma
 
 ### 1. Prerequisites
 *   **Go**: Install **Go 1.24+** on your local machine.
-*   **AWS CLI**: Ensure your local environment is authenticated to your target AWS sandbox account (e.g. via `aws configure` or `~/.aws/credentials`).
+*   **AWS CLI**: Ensure your local environment is authenticated to your target AWS sandbox account (e.g. via `aws configure` or environment credentials).
 
-### 2. Install Dependencies
-Clone the repository, enter the directory, and download required packages:
-```bash
-go mod tidy
+### 2. Compile & Install
+To build the application and package it as a native executable:
+
+#### Windows Users:
+Run the automated packaging installer:
+```cmd
+build.bat
 ```
+This compiles the code into `aws-kill.exe` and displays instructions on how to add it to your System PATH so you can run `aws-kill` from any folder.
 
-### 3. Build & Install
-Compile the codebase to a native executable:
+#### macOS / Linux Users:
 ```bash
-go build -o aws-kill.exe
+go build -o aws-kill
 ```
 
 ---
 
-## Command Walkthrough Guide
+## How To Use (Step-by-Step Walkthrough)
 
-Follow these steps sequentially to scan and clean up your sandbox environment:
+Follow these steps sequentially to scan, plan, destroy, verify, and troubleshoot your AWS infrastructure:
 
-### Step 1: Scan Resources
-Discover all active resources. You can limit the scope by profile, region, or tags:
+### Step 1: Scan Active Resources
+Scan your AWS account to discover all active, non-default workloads. You can specify AWS CLI profile, region, or tags:
 ```bash
-./aws-kill.exe scan --profile my-dev-profile --region ap-northeast-1 --tag Project=sandbox-app
+aws-kill scan --profile my-dev-profile --region us-east-1 --tag Project=sandbox-app
 ```
-*Creates: `reports/inventory.json` and `reports/status.json`*
+*Creates: `reports/inventory.json` (details of resources found) and `reports/status.json` (offline list summaries)*
 
-### Step 2: List Discovered Infrastructure
-View a summary of active resources offline without calling AWS:
+### Step 2: List Discovered Resources Offline
+View the scan summaries offline without query charges or active AWS connections:
 ```bash
-./aws-kill.exe list
+aws-kill list
 ```
 
-### Step 3: Plan Deletion Order (Interactive)
-Run the planner. It will group resources into network silos (VPCs) and show an interactive checkbox menu. Use the Arrow Keys to navigate, Spacebar to toggle, and Enter to select:
+### Step 3: Create an Interactive Deletion Plan
+Launch the interactive planner. It groups your infrastructure by VPC network groups and global services, presenting a checkbox selection overlay. Use the Arrow Keys to scroll, Spacebar to toggle VPC groups, and Enter to confirm:
 ```bash
-./aws-kill.exe plan
+aws-kill plan
 ```
-*Creates: `reports/plan.json` (only for selected resource groups)*
+*Creates: `reports/plan.json` (topologically sorted deletion sequence)*
 
 ### Step 4: Execute Cleanup (Simulated Dry-Run)
-Test the execution sequence safely without deleting anything:
+Ensure the planned sequence is correct and safe to run:
 ```bash
-./aws-kill.exe kill --dry-run
+aws-kill kill --dry-run
 ```
 
 ### Step 5: Execute Cleanup (Live Destruction)
-Permanently destroy the targeted infrastructure. Since confirmation was obtained in Step 3, this runs directly:
+Run the live termination engine. Deletions are sequenced topologically and polled for eventual consistency (e.g. waiting for EC2 instances to terminate and subnets to detach):
 ```bash
-./aws-kill.exe kill
+aws-kill kill
 ```
 *Creates: `reports/result.json`*
 
-### Step 6: Verify Deletions
-Run final check to confirm no remaining targeted resource IDs exist in AWS:
+### Step 6: Verify Deletion Status (Live Audit)
+Query live AWS APIs in real time to verify that planned resource IDs are completely removed:
 ```bash
-./aws-kill.exe verify
+aws-kill verify
 ```
-*Creates: `reports/verification.json`*
+*Plays starting dot loading animations and writes: `reports/verification.json`*
+
+### Step 7: Troubleshoot Blockages
+If the verification phase reports remaining resources (Status: `PARTIAL SUCCESS`), run `explain` to retrieve detailed diagnostics and actionable resolutions:
+```bash
+aws-kill explain
+```
+*Outputs specific instructions (like `aws s3 rb s3://<bucket> --force`) to resolve residual blocks.*
