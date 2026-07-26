@@ -6,10 +6,17 @@ It eliminates the tedious task of manually cleaning up interconnected cloud reso
 
 > [!IMPORTANT]
 > **Safety and Scope Boundaries**:
-> This tool is strictly a developer utility meant for **sandbox account cleanups**. To prevent accidental destruction or disruption:
+> This tool is strictly a developer utility meant for **sideprojects cleanups**. To prevent accidental destruction or disruption:
 > 1. It **excludes all AWS default infrastructure** (default VPCs, default subnets, default security groups) at the scan level.
 > 2. It **requires explicit interactive confirmation** and grouping selection at the planning stage.
 > 3. It provides a **`--dry-run` flag** to simulate all deletions safely before execution.
+
+> [!WARNING]
+> **AWS Kill Switch permanently deletes AWS infrastructure.**
+> This project is intended for development and educational environments only.
+> It has not been designed or tested for production workloads.
+> Always review the generated execution plan before running the **Kill** phase.
+> **Use at your own risk.**
 
 ---
 
