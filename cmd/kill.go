@@ -13,6 +13,7 @@ import (
 	"github.com/Sriharshareddy6464/aws-kill/aws"
 	"github.com/Sriharshareddy6464/aws-kill/engine"
 	"github.com/Sriharshareddy6464/aws-kill/models"
+	"github.com/Sriharshareddy6464/aws-kill/services"
 	"github.com/Sriharshareddy6464/aws-kill/utils"
 )
 
@@ -55,9 +56,61 @@ func (tr *terminalReporter) OnFailure(index int, total int, res models.Resource,
 	}
 	// Clear active Deleting line
 	fmt.Print("\r\033[K")
+
+	// Check if this is a CloudFront lifecycle error
+	if lifeErr, ok := err.(*services.CloudFrontLifecycleError); ok {
+		fmt.Printf("\033[31m✗ %s : %s deletion failed.\033[0m\n", cleanType, name)
+		fmt.Println()
+		fmt.Println("CloudFront Distribution")
+		fmt.Println()
+		fmt.Printf("Status : %s\n", lifeErr.Status)
+		fmt.Println()
+		fmt.Println("AWS Error")
+		fmt.Println(lifeErr.AWSError)
+		fmt.Println()
+		fmt.Println("Reason")
+		fmt.Println(lifeErr.Reason)
+		fmt.Println()
+		fmt.Println("Next Action")
+		fmt.Println(lifeErr.NextAction)
+		fmt.Println("────────────────────────────────────────────")
+		return
+	}
+
 	// Print red cross failure line
 	fmt.Printf("\033[31m✗ %s : %s deletion failed.\033[0m\n", cleanType, name)
 	fmt.Printf("\033[31mReason : %v\033[0m\n", err)
+	fmt.Println("────────────────────────────────────────────")
+}
+
+func (tr *terminalReporter) OnPending(index int, total int, res models.Resource, err error) {
+	cleanType := cleanKillTypeName(res.Type)
+	name := res.Name
+	if name == "" {
+		name = res.ID
+	}
+	// Clear active Deleting line
+	fmt.Print("\r\033[K")
+
+	// Print yellow warning pending line
+	fmt.Printf("\033[33m⚠ %s : %s has pending propagation.\033[0m\n", cleanType, name)
+	if pendingErr, ok := err.(*services.CloudFrontPendingError); ok {
+		fmt.Println()
+		fmt.Println("CloudFront Distribution")
+		fmt.Println()
+		fmt.Println("Status : Pending")
+		fmt.Println()
+		fmt.Println("AWS Error")
+		fmt.Println(pendingErr.AWSError)
+		fmt.Println()
+		fmt.Println("Reason")
+		fmt.Println(pendingErr.Reason)
+		fmt.Println()
+		fmt.Println("Next Action")
+		fmt.Println(pendingErr.NextAction)
+	} else {
+		fmt.Printf("Reason : %v\n", err)
+	}
 	fmt.Println("────────────────────────────────────────────")
 }
 
@@ -165,10 +218,16 @@ var killCmd = &cobra.Command{
 
 		statusText := "SUCCESS"
 		if len(result.FailedResources) > 0 {
-			if len(result.DeletedResources) > 0 {
+			if len(result.DeletedResources) > 0 || len(result.PendingResources) > 0 {
 				statusText = "PARTIAL SUCCESS"
 			} else {
 				statusText = "FAILED"
+			}
+		} else if len(result.PendingResources) > 0 {
+			if len(result.DeletedResources) > 0 {
+				statusText = "PARTIAL SUCCESS"
+			} else {
+				statusText = "PENDING"
 			}
 		}
 
@@ -180,6 +239,9 @@ var killCmd = &cobra.Command{
 		fmt.Println("Execution Summary")
 		fmt.Printf("Resources Scheduled    : %d\n", len(plan.Steps))
 		fmt.Printf("Successfully Deleted   : %d\n", len(result.DeletedResources))
+		if len(result.PendingResources) > 0 {
+			fmt.Printf("Pending                : %d\n", len(result.PendingResources))
+		}
 		fmt.Printf("Failed                 : %d\n", len(result.FailedResources))
 		fmt.Printf("Execution Status       : %s\n", statusText)
 		fmt.Printf("Result Report          : %s\n", resultPath)
